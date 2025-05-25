@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	// "log" // Not strictly needed if sendEmail just returns errors
 	"net/smtp"
 	"strings"
 )

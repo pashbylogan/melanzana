@@ -82,7 +82,7 @@ func TestLoadAndSaveSeenAppointments(t *testing.T) {
 			t.Errorf("loadSeenAppointments() with malformed JSON error = nil, want error")
 		}
 	})
-	
+
 	// 5. Test saving an empty slice
 	t.Run("SaveEmptySlice", func(t *testing.T) {
 		emptyAppointments := []Appointment{}
@@ -100,7 +100,7 @@ func TestLoadAndSaveSeenAppointments(t *testing.T) {
 		if len(loaded) != 0 {
 			t.Errorf("loadSeenAppointments() after saving empty slice got %d, want 0", len(loaded))
 		}
-		
+
 		// Verify content is "[]" or "[]\n"
 		content, readErr := os.ReadFile(emptySliceFilePath)
 		if readErr != nil {

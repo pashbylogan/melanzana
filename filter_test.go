@@ -20,7 +20,7 @@ func TestMonthNameToNumber(t *testing.T) {
 		{"Mixed Case MarCH", "MarCH", time.March, false},
 		{"With Year April 2024", "April 2024", time.April, false},
 		{"With Year and comma May, 2025", "May, 2025", time.May, false},
-		{"Short month Jun", "Jun", time.June, true}, // Assuming current logic doesn't handle short names
+		{"Short month Jun", "Jun", time.June, true},           // Assuming current logic doesn't handle short names
 		{"Invalid Month", "InvalidMonth", time.January, true}, // want time.January is a placeholder for error cases
 		{"Empty String", "", time.January, true},
 		{"Month with only year", "2023", time.January, true},
@@ -46,7 +46,7 @@ func TestFilterAppointments_DateFiltering(t *testing.T) {
 	// Define a fixed "current date" for predictable testing
 	// Let's say today is January 15, 2024 for test purposes
 	fixedNow := time.Date(2024, time.January, 15, 0, 0, 0, 0, time.UTC)
-	
+
 	// Override time.Now for this test. This is a simple way for this specific case.
 	// More complex scenarios might require interfaces and dependency injection for time.
 	originalTimeNow := timeNow // Store original time.Now
@@ -55,27 +55,27 @@ func TestFilterAppointments_DateFiltering(t *testing.T) {
 
 	allAppointments := []Appointment{
 		// Past
-		{Month: "December 2023", Day: "10", IsAvailable: true}, 
+		{Month: "December 2023", Day: "10", IsAvailable: true},
 		// Current Month, but past day (relative to fixedNow)
-		{Month: "January 2024", Day: "1", IsAvailable: true},  
+		{Month: "January 2024", Day: "1", IsAvailable: true},
 		// Current Month, future day (relative to fixedNow)
-		{Month: "January 2024", Day: "20", IsAvailable: true}, 
+		{Month: "January 2024", Day: "20", IsAvailable: true},
 		// Next Month
-		{Month: "February 2024", Day: "5", IsAvailable: true},  
+		{Month: "February 2024", Day: "5", IsAvailable: true},
 		// Two Months Ahead
-		{Month: "March 2024", Day: "10", IsAvailable: true},   
+		{Month: "March 2024", Day: "10", IsAvailable: true},
 		// Three Months Ahead
-		{Month: "April 2024", Day: "15", IsAvailable: true},    
+		{Month: "April 2024", Day: "15", IsAvailable: true},
 		// Four Months Ahead (should be out of range for monthsAhead=3)
-		{Month: "May 2024", Day: "20", IsAvailable: true},     
+		{Month: "May 2024", Day: "20", IsAvailable: true},
 		// Explicit year in the past, different from inferred
 		{Month: "November 2023", Day: "5", IsAvailable: true},
 	}
 
 	tests := []struct {
-		name           string
-		monthsAhead    int
-		expectedCount  int
+		name                 string
+		monthsAhead          int
+		expectedCount        int
 		expectedAppointments []Appointment // Specific appointments expected, if checking more than just count
 	}{
 		{
@@ -117,7 +117,7 @@ func TestFilterAppointments_DateFiltering(t *testing.T) {
 				t.Errorf("filterAppointments() count = %d, want %d", len(filtered), tt.expectedCount)
 				t.Logf("Filtered appointments: %+v", filtered)
 			}
-			
+
 			// Optional: Detailed check of which appointments were returned
 			if tt.expectedAppointments != nil {
 				// Need to ensure order or use a map/set for comparison if order is not guaranteed
@@ -145,27 +145,27 @@ func TestIsNewAppointment(t *testing.T) {
 		want        bool
 	}{
 		{
-			name: "New appointment",
+			name:        "New appointment",
 			appointment: Appointment{Month: "July", Day: "10", Time: "12:00", IsAvailable: true},
 			want:        true,
 		},
 		{
-			name: "Seen appointment (same month and day)",
+			name:        "Seen appointment (same month and day)",
 			appointment: Appointment{Month: "May", Day: "15", Time: "11:00", IsAvailable: false}, // Time and IsAvailable differ, but should still be 'seen'
 			want:        false,
 		},
 		{
-			name: "Different day, same month",
+			name:        "Different day, same month",
 			appointment: Appointment{Month: "May", Day: "16", Time: "10:00", IsAvailable: true},
 			want:        true,
 		},
 		{
-			name: "Different month, same day",
+			name:        "Different month, same day",
 			appointment: Appointment{Month: "July", Day: "15", Time: "10:00", IsAvailable: true},
 			want:        true,
 		},
 		{
-			name: "Empty seen list",
+			name:        "Empty seen list",
 			appointment: Appointment{Month: "May", Day: "15"},
 			// want: true, // This will be tested with an empty seenAppointments list directly
 		},
