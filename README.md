@@ -192,10 +192,39 @@ The scraper may require updates to continue functioning. However, this API-based
 
 ## Development
 
-To run the unit tests for this project:
+### Running Tests
 
+This project includes comprehensive test coverage for all core functionality. To run the tests:
+
+**Run all tests:**
 ```bash
-go test ./...
+go test -v
 ```
 
-This command will execute all test files (`*_test.go`) in the current directory and any subdirectories.
+**Run tests with coverage report:**
+```bash
+go test -cover
+```
+
+**Run specific test file:**
+```bash
+go test -run TestFilterNewAppointments -v
+```
+
+### Test Coverage
+
+The test suite covers:
+
+- **Filter functionality** (`filter_test.go`): Tests appointment filtering logic, including handling of new vs. seen appointments
+- **Storage functionality** (`storage_test.go`): Tests JSON file operations for loading and saving appointment data, including edge cases like malformed files and large datasets
+- **Scraper functionality** (`scraper_test.go`): Tests HTML parsing, date range generation, email body building, and space extraction from text
+
+**Key test scenarios:**
+- Empty appointment lists and files
+- Malformed JSON handling
+- Large dataset processing
+- HTML parsing edge cases
+- Date range generation across different periods
+- Email notification content generation
+
+All tests use temporary files and mock data to avoid external dependencies.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -17,11 +18,10 @@ func TestLoadAndSaveSeenAppointments(t *testing.T) {
 
 	testFilePath := filepath.Join(tempDir, "test_seen_appointments.json")
 
-	// 1. Test successful save and load
 	t.Run("SaveAndLoadSuccessfully", func(t *testing.T) {
 		originalAppointments := []Appointment{
-			{Month: "August", Day: "10", Time: "10:00", IsAvailable: true},
-			{Month: "September", Day: "22", Time: "15:00", IsAvailable: false},
+			{Date: "2024-08-10", Time: "10:00 am – 11:00 am", Spaces: 2, IsAvailable: true},
+			{Date: "2024-09-22", Time: "3:00 pm – 4:00 pm", Spaces: 1, IsAvailable: true},
 		}
 
 		err := saveSeenAppointments(originalAppointments, testFilePath)
@@ -39,7 +39,6 @@ func TestLoadAndSaveSeenAppointments(t *testing.T) {
 		}
 	})
 
-	// 2. Test loading from a non-existent file
 	t.Run("LoadNonExistentFile", func(t *testing.T) {
 		nonExistentFilePath := filepath.Join(tempDir, "non_existent.json")
 		loaded, err := loadSeenAppointments(nonExistentFilePath)
@@ -51,7 +50,6 @@ func TestLoadAndSaveSeenAppointments(t *testing.T) {
 		}
 	})
 
-	// 3. Test loading from an empty file
 	t.Run("LoadEmptyFile", func(t *testing.T) {
 		emptyFilePath := filepath.Join(tempDir, "empty.json")
 		f, err := os.Create(emptyFilePath)
@@ -69,7 +67,6 @@ func TestLoadAndSaveSeenAppointments(t *testing.T) {
 		}
 	})
 
-	// 4. Test loading from a malformed JSON file
 	t.Run("LoadMalformedJSON", func(t *testing.T) {
 		malformedFilePath := filepath.Join(tempDir, "malformed.json")
 		err := os.WriteFile(malformedFilePath, []byte("[{malformed json}}"), 0644)
@@ -83,7 +80,6 @@ func TestLoadAndSaveSeenAppointments(t *testing.T) {
 		}
 	})
 
-	// 5. Test saving an empty slice
 	t.Run("SaveEmptySlice", func(t *testing.T) {
 		emptyAppointments := []Appointment{}
 		emptySliceFilePath := filepath.Join(tempDir, "empty_slice_saved.json")
@@ -101,19 +97,48 @@ func TestLoadAndSaveSeenAppointments(t *testing.T) {
 			t.Errorf("loadSeenAppointments() after saving empty slice got %d, want 0", len(loaded))
 		}
 
-		// Verify content is "[]" or "[]\n"
+		// Verify content is valid empty JSON array
 		content, readErr := os.ReadFile(emptySliceFilePath)
 		if readErr != nil {
 			t.Fatalf("Failed to read file after saving empty slice: %v", readErr)
 		}
-		trimmedContent := string(content)
-		// Allow for potential newline character from MarshalIndent
-		if trimmedContent != "[]" && trimmedContent != "[]\n" && trimmedContent != "[\n\n]" { // MarshalIndent might add newlines
-			// More robust check for empty array after potential pretty printing
-			var checkEmpty []Appointment
-			if unmarshalErr := json.Unmarshal(content, &checkEmpty); unmarshalErr != nil || len(checkEmpty) != 0 {
-				t.Errorf("File content after saving empty slice is not an empty JSON array. Got: %s", string(content))
-			}
+
+		var checkEmpty []Appointment
+		if unmarshalErr := json.Unmarshal(content, &checkEmpty); unmarshalErr != nil || len(checkEmpty) != 0 {
+			t.Errorf("File content after saving empty slice is not a valid empty JSON array. Got: %s", string(content))
+		}
+	})
+
+	t.Run("SaveAndLoadLargeDataset", func(t *testing.T) {
+		// Test with a larger dataset to ensure the system handles it well
+		var largeAppointments []Appointment
+		for i := 0; i < 100; i++ {
+			largeAppointments = append(largeAppointments, Appointment{
+				Date:        "2024-05-15",
+				Time:        "10:00 am – 11:00 am",
+				Spaces:      i%5 + 1, // Varies from 1-5
+				IsAvailable: true,
+			})
+		}
+
+		largeFilePath := filepath.Join(tempDir, "large_dataset.json")
+
+		err := saveSeenAppointments(largeAppointments, largeFilePath)
+		if err != nil {
+			t.Fatalf("saveSeenAppointments() with large dataset failed: %v", err)
+		}
+
+		loaded, err := loadSeenAppointments(largeFilePath)
+		if err != nil {
+			t.Fatalf("loadSeenAppointments() with large dataset failed: %v", err)
+		}
+
+		if len(loaded) != len(largeAppointments) {
+			t.Errorf("loadSeenAppointments() large dataset length = %d, want %d", len(loaded), len(largeAppointments))
+		}
+
+		if !reflect.DeepEqual(loaded, largeAppointments) {
+			t.Errorf("Large dataset not preserved through save/load cycle")
 		}
 	})
 }

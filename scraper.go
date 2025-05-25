@@ -120,7 +120,7 @@ func parseAppointmentSlots(htmlContent, date string) ([]Appointment, error) {
 	doc.Find(".timeslot").Each(func(i int, s *goquery.Selection) {
 		// Extract time from the timeslot-range span
 		timeText := strings.TrimSpace(s.Find(".timeslot-range").Text())
-		
+
 		if !timePattern.MatchString(timeText) {
 			return
 		}
@@ -131,7 +131,7 @@ func parseAppointmentSlots(htmlContent, date string) ([]Appointment, error) {
 		}
 
 		timeSlot := fmt.Sprintf("%s – %s", timeMatch[1], timeMatch[2])
-		
+
 		// Extract spaces from the spots-available span within timeslot-time
 		spacesText := strings.TrimSpace(s.Find(".timeslot-time .spots-available").Text())
 		spaces := extractSpaces(spacesText)
