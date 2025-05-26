@@ -57,19 +57,27 @@ func loadConfig() (AppConfig, error) {
 		}
 	}
 
-	// Apply command-line flag overrides
-	config.MonthsLookahead = *monthsFlag
-	config.SMTPServer = *smtpServerFlag
-	config.SMTPPort = *smtpPortFlag
-	config.SMTPUsername = *smtpUserFlag
-	if *smtpPassFlag != "" {
-		config.SMTPPassword = *smtpPassFlag
-	}
-	config.FromEmail = *fromEmailFlag
-	if *toEmailsFlag != "" {
-		config.ToEmails = strings.Split(*toEmailsFlag, ",")
-	}
-	config.DataFile = *dataFileFlag
+	// Apply command-line flag overrides only if explicitly set
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "months":
+			config.MonthsLookahead = *monthsFlag
+		case "smtpServer":
+			config.SMTPServer = *smtpServerFlag
+		case "smtpPort":
+			config.SMTPPort = *smtpPortFlag
+		case "smtpUser":
+			config.SMTPUsername = *smtpUserFlag
+		case "smtpPass":
+			config.SMTPPassword = *smtpPassFlag
+		case "fromEmail":
+			config.FromEmail = *fromEmailFlag
+		case "toEmails":
+			config.ToEmails = strings.Split(*toEmailsFlag, ",")
+		case "dataFile":
+			config.DataFile = *dataFileFlag
+		}
+	})
 
 	return config, nil
 }

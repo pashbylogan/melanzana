@@ -36,17 +36,14 @@ func runScrapingCycle(config AppConfig) {
 
 		logNewAppointments(newAppointments)
 
-		// Email sending is commented out by default
-		// Uncomment and configure the following lines to enable email notifications:
-		//
-		// emailBody := buildEmailBody(newAppointments)
-		// if err := sendEmailNotification(config, emailBody); err != nil {
-		// 	log.Printf("Error sending email: %v", err)
-		// } else {
-		// 	log.Println("Email notification sent successfully")
-		// }
+		emailBody := buildEmailBody(newAppointments)
+		if err := sendEmailNotification(config, emailBody); err != nil {
+			log.Printf("Error sending email: %v", err)
+		} else {
+			log.Println("Email notification sent successfully")
+		}
 
-		log.Println("Email notifications are disabled. See main.go to enable.")
+		// log.Println("Email notifications are disabled. See main.go to enable.")
 
 		// Update seen appointments
 		seenAppointments = append(seenAppointments, newAppointments...)
