@@ -2,17 +2,17 @@
 
 ## Description
 
-This tool checks the Melanzana website for available shopping appointments using their internal booking API. If new appointments are found within a configured lookahead period, it can send an email notification.
+This tool checks the Melanzana website for available shopping appointments using their Cowlendar booking API. If new appointments are found within a configured lookahead period, it can send an email notification.
 
-The scraper uses Melanzana's WordPress admin-ajax.php endpoint to efficiently check appointment availability across multiple dates, making it fast and reliable compared to HTML parsing approaches.
+The scraper uses Cowlendar's external API endpoint to efficiently check appointment availability across multiple months, with intelligent optimization to minimize unnecessary requests.
 
 It is designed to be run periodically, for example, using a cron job, to monitor for new appointment openings.
 
 ## Features
 
-* **API-based approach**: Uses Melanzana's internal booking API (`admin-ajax.php`) for efficient data retrieval
-* **Dynamic nonce handling**: Automatically extracts and refreshes WordPress security tokens
-* **Date range scanning**: Checks appointment availability across multiple dates efficiently  
+* **Modern API integration**: Uses Cowlendar's external API for direct, reliable data retrieval
+* **Intelligent optimization**: Automatically stops searching when next available date exceeds the configured timeframe
+* **Month-based scanning**: Efficiently checks appointment availability by month rather than individual dates
 * **Smart filtering**: Identifies newly available appointments by comparing against previously seen appointments
 * **Configurable timeframe**: Filters appointments by a configurable lookahead period (e.g., next 3 months)
 * **Email notifications**: Sends detailed email alerts for newly available appointments
@@ -21,7 +21,7 @@ It is designed to be run periodically, for example, using a cron job, to monitor
 
 ## Prerequisites
 
-* Go (developed with Go 1.22+, should work with Go 1.18+ due to `goquery` and standard library usage).
+* Go (developed with Go 1.22+, should work with Go 1.18+ due to standard library usage).
 
 ## Installation / Setup
 
@@ -110,22 +110,23 @@ Run the scraper from the command line:
 
 The scraper will log its activities to standard output, showing:
 
-* Nonce extraction progress
-* Date checking progress  
-* Number of appointment slots found per date
+* Monthly availability checking progress
+* API optimization decisions (early termination when appropriate)
+* Number of appointment slots found per month
+* Next availability dates from the API
 * New appointments discovered
 * Email notification status
 
 **Example output:**
 
 ```
-2025/05/25 16:15:57 Extracting nonce from booking page...
-2025/05/25 16:15:57 Found nonce using pattern 'booked_js_vars.*?"nonce":\s*"([^"]+)"': f375520d20
-2025/05/25 16:15:57 Checking appointments for 30 dates (1 months ahead)
-2025/05/25 16:15:57 Checking date: 2025-05-25
-2025/05/25 16:15:58 Found 9 appointment slots for 2025-05-25
-2025/05/25 16:15:58 Checking date: 2025-05-26
-2025/05/25 16:15:59 No appointments available for 2025-05-26
+2025/09/23 21:38:16 Melanzana Scraper - Checking 3 months ahead
+2025/09/23 21:38:16 --- Starting scraping cycle ---
+2025/09/23 21:38:16 Checking availability for 2025-09
+2025/09/23 21:38:16 Next availability 2026-04-16 is beyond threshold 2025-12-23 - stopping search
+2025/09/23 21:38:16 Total available appointments found: 0
+2025/09/23 21:38:16 No new appointments found
+2025/09/23 21:38:16 --- Scraping cycle complete ---
 ```
 
 ## Email Notifications
@@ -168,27 +169,33 @@ To run the scraper periodically, you can set up a cron job.
 
 The scraper operates by:
 
-1. **Nonce Extraction**: Fetches the booking page to extract the current WordPress nonce (security token)
-2. **Date Range Generation**: Creates a list of dates to check based on the configured lookahead period
-3. **API Requests**: Makes POST requests to `https://melanzana.com/wp-admin/admin-ajax.php` with:
-   * `action=booked_calendar_date`
-   * `nonce=<extracted_token>`
-   * `date=YYYY-MM-DD`
-   * `calendar_id=0`
-4. **Response Parsing**: Extracts appointment time slots and availability from the HTML responses
+1. **Month Iteration**: Iterates through the configured number of months ahead from the current date
+2. **API Requests**: Makes GET requests to `https://app.cowlendar.com/extapi/calendar/685b42f202405a8372cd6b78/availability` with:
+   * `year=YYYY`
+   * `month=MM`
+   * `timezone=America/Denver`
+   * Various booking configuration parameters
+3. **Optimization Check**: Examines the `next_availability` field in the API response - if it's beyond the configured threshold, stops searching to save unnecessary API calls
+4. **Response Parsing**: Processes the JSON response to extract detailed appointment slot information including times and availability counts
 5. **Change Detection**: Compares found appointments against previously seen ones
 6. **Notifications**: Sends email alerts for any new available appointments
 
 ## API Limitations
 
-This scraper relies on Melanzana's internal WordPress booking API. If they:
+This scraper relies on Cowlendar's external API that Melanzana uses for their booking system. If they:
 
-* Change their nonce generation method
-* Modify the admin-ajax.php endpoint structure  
-* Update the response format
-* Implement additional security measures
+* Change booking platforms
+* Update the Cowlendar calendar ID or variant ID
+* Modify API parameters or response format
+* Implement rate limiting or access restrictions
 
-The scraper may require updates to continue functioning. However, this API-based approach is more stable than HTML parsing and less likely to break from minor website changes.
+The scraper may require updates to continue functioning. However, this API-based approach using a dedicated booking service is very stable and robust.
+
+**Current API endpoint:** `https://app.cowlendar.com/extapi/calendar/685b42f202405a8372cd6b78/availability`
+
+**Key identifiers:**
+* Calendar ID: `685b42f202405a8372cd6b78`
+* Variant ID: `41855678382123` (appears to be optional/flexible)
 
 ## Development
 
