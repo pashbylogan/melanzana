@@ -1,36 +1,42 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"net/url"
-	"regexp"
-	"strconv"
-	"strings"
 	"time"
-
-	"github.com/PuerkitoBio/goquery"
 )
 
 const (
-	bookingURL   = "https://melanzana.com/book-an-appointment"
-	ajaxURL      = "https://melanzana.com/wp-admin/admin-ajax.php"
+	cowlendarURL = "https://app.cowlendar.com/extapi/calendar/685b42f202405a8372cd6b78/availability"
 	requestDelay = 100 * time.Millisecond
-	daysPerMonth = 30
-	calendarID   = "0"
 )
 
-var (
-	noncePatterns = []string{
-		`booked_js_vars.*?"nonce":\s*"([^"]+)"`,
-		`booked_wc_variables.*?"nonce":\s*"([^"]+)"`,
-		`"nonce":\s*"([^"]+)"`,
-	}
-	timePattern  = regexp.MustCompile(`(\d{1,2}:\d{2}\s+[ap]m)\s*[–-]\s*(\d{1,2}:\d{2}\s+[ap]m)`)
-	spacePattern = regexp.MustCompile(`(\d+)\s+spaces?\s+available`)
-)
+// CowlendarResponse represents the API response structure
+type CowlendarResponse struct {
+	Short                  []string       `json:"short"`
+	Long                   []DetailedSlot `json:"long"`
+	MaxDate                string         `json:"max_date"`
+	NextAvailability       string         `json:"next_availability"`
+	NoAvailabilityInFuture bool           `json:"no_availability_in_futur"`
+	TargetTimezone         string         `json:"target_timezone"`
+	NextUnix               *int64         `json:"next_unix"`
+	JumpToNextAvs          bool           `json:"jump_to_next_avs"`
+}
+
+// DetailedSlot represents a detailed time slot from the "long" array
+type DetailedSlot struct {
+	Slot         string `json:"slot"`
+	SlotStart    string `json:"slot_start"`
+	SlotEnd      string `json:"slot_end"`
+	SlotDuration int    `json:"slot_duration"`
+	IsBookable   bool   `json:"is_bookable"`
+	QtyBooked    int    `json:"qty_booked"`
+	QtyLeft      int    `json:"qty_left"`
+	MaxQty       int    `json:"max_qty"`
+}
 
 // Appointment holds information about a single appointment slot.
 type Appointment struct {
@@ -40,47 +46,14 @@ type Appointment struct {
 	IsAvailable bool   `json:"isAvailable"` // whether any appointments are available
 }
 
-// extractNonce fetches the booking page and extracts the current nonce value.
-func extractNonce() (string, error) {
-	resp, err := http.Get(bookingURL)
+// fetchAvailability fetches appointment availability for a specific month from Cowlendar API
+func fetchAvailability(year, month int) (*CowlendarResponse, error) {
+	url := fmt.Sprintf("%s?year=%d&month=%d&timezone=America/Denver&quantity_details[0][type]=default&quantity_details[0][quantity]=1&quantity_details[0][name]=Default&teammate_id=all&duration=30&is_manual=false&variant_id=41855678382123",
+		cowlendarURL, year, month)
+
+	resp, err := http.Get(url)
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch booking page: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("booking page returned status %d", resp.StatusCode)
-	}
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read booking page: %w", err)
-	}
-
-	content := string(bodyBytes)
-	for _, pattern := range noncePatterns {
-		if re := regexp.MustCompile(pattern); re != nil {
-			if matches := re.FindStringSubmatch(content); len(matches) >= 2 {
-				return matches[1], nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("nonce not found in booking page")
-}
-
-// checkDateAvailability makes a POST request to check appointment availability for a specific date.
-func checkDateAvailability(date, nonce string) ([]Appointment, error) {
-	formData := url.Values{
-		"action":      {"booked_calendar_date"},
-		"nonce":       {nonce},
-		"date":        {date},
-		"calendar_id": {calendarID},
-	}
-
-	resp, err := http.PostForm(ajaxURL, formData)
-	if err != nil {
-		return nil, fmt.Errorf("API request failed: %w", err)
+		return nil, fmt.Errorf("failed to fetch availability: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -90,129 +63,99 @@ func checkDateAvailability(date, nonce string) ([]Appointment, error) {
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read API response: %w", err)
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	responseText := string(bodyBytes)
-
-	// Check for known error conditions
-	if strings.Contains(responseText, "Required \"nonce\" value is not here") {
-		return nil, fmt.Errorf("invalid nonce")
+	var response CowlendarResponse
+	if err := json.Unmarshal(bodyBytes, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON response: %w", err)
 	}
 
-	if strings.Contains(responseText, "There are no appointment time slots available") {
-		return []Appointment{}, nil
-	}
-
-	return parseAppointmentSlots(responseText, date)
+	return &response, nil
 }
 
-// parseAppointmentSlots extracts appointment time slots from the HTML response.
-func parseAppointmentSlots(htmlContent, date string) ([]Appointment, error) {
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse HTML: %w", err)
-	}
-
+// convertCowlendarToAppointments converts Cowlendar response to our Appointment format
+func convertCowlendarToAppointments(response *CowlendarResponse) []Appointment {
 	var appointments []Appointment
 
-	// Target specific timeslot containers instead of searching all elements
-	doc.Find(".timeslot").Each(func(i int, s *goquery.Selection) {
-		// Extract time from the timeslot-range span
-		timeText := strings.TrimSpace(s.Find(".timeslot-range").Text())
-
-		if !timePattern.MatchString(timeText) {
-			return
+	// Process detailed slots from "long" array
+	for _, slot := range response.Long {
+		if !slot.IsBookable || slot.QtyLeft <= 0 {
+			continue
 		}
 
-		timeMatch := timePattern.FindStringSubmatch(timeText)
-		if len(timeMatch) < 3 {
-			return
+		// Parse date and time from slot_start and slot_end
+		startTime, err := time.Parse("2006-01-02 15:04", slot.SlotStart)
+		if err != nil {
+			log.Printf("Error parsing start time %s: %v", slot.SlotStart, err)
+			continue
 		}
 
-		timeSlot := fmt.Sprintf("%s – %s", timeMatch[1], timeMatch[2])
+		endTime, err := time.Parse("2006-01-02 15:04", slot.SlotEnd)
+		if err != nil {
+			log.Printf("Error parsing end time %s: %v", slot.SlotEnd, err)
+			continue
+		}
 
-		// Extract spaces from the spots-available span within timeslot-time
-		spacesText := strings.TrimSpace(s.Find(".timeslot-time .spots-available").Text())
-		spaces := extractSpaces(spacesText)
+		// Format times for display
+		timeSlot := fmt.Sprintf("%s – %s",
+			startTime.Format("3:04 pm"),
+			endTime.Format("3:04 pm"))
 
 		appointments = append(appointments, Appointment{
-			Date:        date,
+			Date:        startTime.Format("2006-01-02"),
 			Time:        timeSlot,
-			Spaces:      spaces,
-			IsAvailable: spaces > 0,
+			Spaces:      slot.QtyLeft,
+			IsAvailable: slot.QtyLeft > 0,
 		})
-	})
-
-	return appointments, nil
-}
-
-// extractSpaces extracts the number of available spaces from text.
-func extractSpaces(text string) int {
-	if spaceMatch := spacePattern.FindStringSubmatch(text); len(spaceMatch) >= 2 {
-		if spaces, err := strconv.Atoi(spaceMatch[1]); err == nil {
-			return spaces
-		}
 	}
-	return 0
+
+	return appointments
 }
 
-// generateDateRange creates a slice of dates from start date for the specified number of days.
-func generateDateRange(startDate time.Time, days int) []string {
-	dates := make([]string, days)
-	for i := 0; i < days; i++ {
-		dates[i] = startDate.AddDate(0, 0, i).Format("2006-01-02")
-	}
-	return dates
-}
-
-// scrapeAppointments checks appointment availability across a range of dates.
+// scrapeAppointments checks appointment availability using the Cowlendar API
 func scrapeAppointments(monthsAhead int) ([]Appointment, error) {
-	log.Println("Extracting nonce from booking page...")
-	nonce, err := extractNonce()
-	if err != nil {
-		return nil, fmt.Errorf("failed to extract nonce: %w", err)
-	}
-
-	daysToCheck := monthsAhead * daysPerMonth
-	dates := generateDateRange(time.Now(), daysToCheck)
-
-	log.Printf("Checking appointments for %d dates (%d months ahead)", len(dates), monthsAhead)
-
 	var allAppointments []Appointment
+	currentTime := time.Now()
+	thresholdDate := currentTime.AddDate(0, monthsAhead, 0)
 
-	for i, date := range dates {
-		if i > 0 {
-			time.Sleep(requestDelay)
-		}
+	// Check each month ahead
+	for i := 0; i < monthsAhead; i++ {
+		targetDate := currentTime.AddDate(0, i, 0)
+		year := targetDate.Year()
+		month := int(targetDate.Month())
 
-		appointments, err := checkDateAvailability(date, nonce)
+		log.Printf("Checking availability for %d-%02d", year, month)
+
+		response, err := fetchAvailability(year, month)
 		if err != nil {
-			if strings.Contains(err.Error(), "invalid nonce") {
-				log.Println("Nonce expired, refreshing...")
-				if nonce, err = extractNonce(); err != nil {
-					log.Printf("Failed to refresh nonce: %v", err)
-					continue
-				}
-				if appointments, err = checkDateAvailability(date, nonce); err != nil {
-					log.Printf("Error checking date %s after nonce refresh: %v", date, err)
-					continue
-				}
-			} else {
-				log.Printf("Error checking date %s: %v", date, err)
-				continue
+			log.Printf("Error fetching availability for %d-%02d: %v", year, month, err)
+			continue
+		}
+
+		// Check if next availability is beyond our search threshold
+		if response.NextAvailability != "" {
+			nextAvailable, err := time.Parse("2006-01-02", response.NextAvailability)
+			if err == nil && nextAvailable.After(thresholdDate) {
+				log.Printf("Next availability %s is beyond threshold %s - stopping search",
+					response.NextAvailability, thresholdDate.Format("2006-01-02"))
+				break
 			}
 		}
 
-		// Only add available appointments
-		for _, appt := range appointments {
-			if appt.IsAvailable {
-				allAppointments = append(allAppointments, appt)
-			}
-		}
-
+		appointments := convertCowlendarToAppointments(response)
 		if len(appointments) > 0 {
-			log.Printf("Found %d appointment slots for %s", len(appointments), date)
+			log.Printf("Found %d appointment slots for %d-%02d", len(appointments), year, month)
+			allAppointments = append(allAppointments, appointments...)
+		} else {
+			log.Printf("No appointments available for %d-%02d", year, month)
+			if response.NextAvailability != "" {
+				log.Printf("Next availability: %s", response.NextAvailability)
+			}
+		}
+
+		if i < monthsAhead-1 {
+			time.Sleep(requestDelay)
 		}
 	}
 
